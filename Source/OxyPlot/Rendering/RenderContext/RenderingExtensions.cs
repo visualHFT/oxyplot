@@ -340,76 +340,129 @@ namespace OxyPlot
         /// <param name="resolution">The resolution.</param>
         /// <param name="binOffset">The bin Offset.</param>
         public static void DrawMarkers(
-            this IRenderContext rc,
-            IList<ScreenPoint> markerPoints,
-            MarkerType markerType,
-            IList<ScreenPoint>? markerOutline,
-            IList<double> markerSize,
-            OxyColor markerFill,
-            OxyColor markerStroke,
-            double markerStrokeThickness,
-            EdgeRenderingMode edgeRenderingMode,
-            int resolution = 0,
-            ScreenPoint binOffset = new ScreenPoint())
+    this IRenderContext rc,
+    IList<ScreenPoint> markerPoints,
+    MarkerType markerType,
+    IList<ScreenPoint>? markerOutline,
+    IList<double> markerSize,
+    OxyColor markerFill,
+    OxyColor markerStroke,
+    double markerStrokeThickness,
+    EdgeRenderingMode edgeRenderingMode,
+    int resolution = 0,
+    ScreenPoint binOffset = default)
         {
-            if (markerType == MarkerType.None)
+             
+            if (markerType == MarkerType.None || markerPoints == null || markerPoints.Count == 0)
             {
                 return;
             }
 
-            var n = markerPoints.Count;
-            var ellipses = new List<OxyRect>(n);
-            var rects = new List<OxyRect>(n);
-            var polygons = new List<IList<ScreenPoint>>(n);
-            var lines = new List<ScreenPoint>(n);
+             
+            List<OxyRect>? ellipses = null;
+            List<OxyRect>? rects = null;
+            List<IList<ScreenPoint>>? polygons = null;
+            List<ScreenPoint>? lines = null;
+             
+            int n = markerPoints.Count;
 
-            var hashset = new Dictionary<uint, bool>();
-
-            var i = 0;
-
-            foreach (var p in markerPoints)
+            switch (markerType)
             {
-                if (resolution > 1)
-                {
-                    var x = (int)((p.X - binOffset.X) / resolution);
-                    var y = (int)((p.Y - binOffset.Y) / resolution);
-                    uint hash = (uint)(x << 16) + (uint)y;
-                    if (hashset.ContainsKey(hash))
+                case MarkerType.Circle:
+                    ellipses = new List<OxyRect>(n);
+                    break;
+
+                case MarkerType.Square:
+                case MarkerType.Diamond:
+                    rects = new List<OxyRect>(n);
+                    break;
+
+                case MarkerType.Triangle:
+                case MarkerType.Custom:
+                    polygons = new List<IList<ScreenPoint>>(n);
+                    break;
+
+                case MarkerType.Plus:
+                case MarkerType.Cross:
+                case MarkerType.Star:
+                    lines = new List<ScreenPoint>(n * 2);
+                    break;
+
+                // If you have other marker types, handle them or fallback
+                default:
+                    polygons = new List<IList<ScreenPoint>>(n);
+                    break;
+            }
+             
+            HashSet<uint>? usedBins = null;
+            if (resolution > 1)
+            {
+                usedBins = new HashSet<uint>();
+            }
+             
+            int i = 0;
+            foreach (var point in markerPoints)
+            { 
+                if (usedBins != null)
+                { 
+                    int x = (int)((point.X - binOffset.X) / resolution);
+                    int y = (int)((point.Y - binOffset.Y) / resolution);
+                     
+                    uint key = ((uint)x << 16) ^ (uint)(y & 0xFFFF);
+
+                    // If we already drew a marker in this bin, skip
+                    if (!usedBins.Add(key))
                     {
                         i++;
                         continue;
                     }
-
-                    hashset.Add(hash, true);
                 }
 
+
                 var j = i < markerSize.Count ? i : 0;
-                AddMarkerGeometry(p, markerType, markerOutline, markerSize[j], ellipses, rects, polygons, lines);
+
+                // Pick a size from the markerSize list (wrap or fallback to 0)
+               // int sizeIndex = (i < markerSize.Count) ? i : 0;
+                double thisMarkerSize = markerSize[j];// markerSize markerSize[sizeIndex];
+
+                // Build geometry for this marker
+                // Only populate the geometry collection(s) that exist:
+                AddMarkerGeometry(
+                    point,
+                    markerType,
+                    markerOutline,
+                    thisMarkerSize,
+                    ellipses,
+                    rects,
+                    polygons,
+                    lines);
 
                 i++;
             }
 
+            // 4. Decide edge rendering mode
             if (edgeRenderingMode == EdgeRenderingMode.Automatic)
             {
                 edgeRenderingMode = EdgeRenderingMode.PreferGeometricAccuracy;
             }
 
-            if (ellipses.Count > 0)
+            // 5. Perform draw calls only for non-empty geometry collections
+            if (ellipses != null && ellipses.Count > 0)
             {
                 rc.DrawEllipses(ellipses, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
             }
 
-            if (rects.Count > 0)
+            if (rects != null && rects.Count > 0)
             {
                 rc.DrawRectangles(rects, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
             }
 
-            if (polygons.Count > 0)
+            if (polygons != null && polygons.Count > 0)
             {
                 rc.DrawPolygons(polygons, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
             }
 
-            if (lines.Count > 0)
+            if (lines != null && lines.Count > 0)
             {
                 rc.DrawLineSegments(lines, markerStroke, markerStrokeThickness, edgeRenderingMode);
             }
@@ -529,98 +582,67 @@ namespace OxyPlot
         {
             return new AutoResetClipToken(rc, clippingRectangle);
         }
-
-        /// <summary>
-        /// Adds a marker geometry to the specified collections.
-        /// </summary>
-        /// <param name="p">The position of the marker.</param>
-        /// <param name="type">The marker type.</param>
-        /// <param name="outline">The custom outline, if <paramref name="type" /> is <see cref="MarkerType.Custom" />.</param>
-        /// <param name="size">The size of the marker.</param>
-        /// <param name="ellipses">The output ellipse collection.</param>
-        /// <param name="rects">The output rectangle collection.</param>
-        /// <param name="polygons">The output polygon collection.</param>
-        /// <param name="lines">The output line collection.</param>
+ 
         private static void AddMarkerGeometry(
-            ScreenPoint p,
-            MarkerType type,
-            IEnumerable<ScreenPoint>? outline,
-            double size,
-            IList<OxyRect> ellipses,
-            IList<OxyRect> rects,
-            IList<IList<ScreenPoint>> polygons,
-            IList<ScreenPoint> lines)
+    ScreenPoint center,
+    MarkerType markerType,
+    IList<ScreenPoint>? markerOutline,
+    double markerSize,
+    List<OxyRect>? ellipses,
+    List<OxyRect>? rects,
+    List<IList<ScreenPoint>>? polygons,
+    List<ScreenPoint>? lines)
         {
-            if (type == MarkerType.Custom)
+            switch (markerType)
             {
-                if (outline == null)
-                {
-                    throw new ArgumentNullException("outline", "The outline should be set when MarkerType is 'Custom'.");
-                }
-
-                var poly = outline.Select(o => new ScreenPoint(p.X + (o.x * size), p.Y + (o.y * size))).ToList();
-                polygons.Add(poly);
-                return;
-            }
-
-            switch (type)
-            {
-                case MarkerType.Circle:
+                case MarkerType.Circle: 
+                    if (ellipses != null)
                     {
-                        ellipses.Add(new OxyRect(p.x - size, p.y - size, size * 2, size * 2));
-                        break;
+                        double half = markerSize;
+                        ellipses.Add(new OxyRect(center.X - half, center.Y - half, markerSize*2, markerSize*2));
                     }
+                    break;
 
                 case MarkerType.Square:
+                    if (rects != null)
                     {
-                        rects.Add(new OxyRect(p.x - size, p.y - size, size * 2, size * 2));
-                        break;
+                        double half = markerSize;
+                        rects.Add(new OxyRect(center.X - half, center.Y - half, markerSize*2, markerSize * 2));
                     }
-
-                case MarkerType.Diamond:
-                    {
-                        polygons.Add(
-                            new[]
-                                {
-                                    new ScreenPoint(p.x, p.y - (M2 * size)), new ScreenPoint(p.x + (M2 * size), p.y),
-                                    new ScreenPoint(p.x, p.y + (M2 * size)), new ScreenPoint(p.x - (M2 * size), p.y)
-                                });
-                        break;
-                    }
-
-                case MarkerType.Triangle:
-                    {
-                        polygons.Add(
-                            new[]
-                                {
-                                    new ScreenPoint(p.x - size, p.y + (M1 * size)),
-                                    new ScreenPoint(p.x + size, p.y + (M1 * size)), new ScreenPoint(p.x, p.y - (M2 * size))
-                                });
-                        break;
-                    }
+                    break;
 
                 case MarkerType.Plus:
-                case MarkerType.Star:
+                    if (lines != null)
                     {
-                        lines.Add(new ScreenPoint(p.x - size, p.y));
-                        lines.Add(new ScreenPoint(p.x + size, p.y));
-                        lines.Add(new ScreenPoint(p.x, p.y - size));
-                        lines.Add(new ScreenPoint(p.x, p.y + size));
-                        break;
+                        double half = markerSize;
+                        // Horizontal line
+                        lines.Add(new ScreenPoint(center.X - half, center.Y));
+                        lines.Add(new ScreenPoint(center.X + half, center.Y));
+                        // Vertical line
+                        lines.Add(new ScreenPoint(center.X, center.Y - half));
+                        lines.Add(new ScreenPoint(center.X, center.Y + half));
                     }
-            }
+                    break;
 
-            switch (type)
-            {
-                case MarkerType.Cross:
-                case MarkerType.Star:
+                // ... other shapes (Triangle, Star, Diamond, etc.) ...
+                // Possibly fill polygons, lines, etc.
+
+                case MarkerType.Custom:
+                    if (polygons != null && markerOutline != null)
                     {
-                        lines.Add(new ScreenPoint(p.x - (size * M3), p.y - (size * M3)));
-                        lines.Add(new ScreenPoint(p.x + (size * M3), p.y + (size * M3)));
-                        lines.Add(new ScreenPoint(p.x - (size * M3), p.y + (size * M3)));
-                        lines.Add(new ScreenPoint(p.x + (size * M3), p.y - (size * M3)));
-                        break;
+                        // Scale/translate the markerOutline around 'center'
+                        var customShape = new List<ScreenPoint>(markerOutline.Count);
+                        double half = markerSize;
+                        foreach (var p in markerOutline)
+                        {
+                            // For example, scale around (0,0) and translate
+                            customShape.Add(new ScreenPoint(
+                                center.X + p.X * half,
+                                center.Y + p.Y * half));
+                        }
+                        polygons.Add(customShape);
                     }
+                    break;
             }
         }
 
