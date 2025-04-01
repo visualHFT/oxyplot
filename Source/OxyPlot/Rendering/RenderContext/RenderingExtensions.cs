@@ -9,6 +9,11 @@
 
 #nullable enable
 
+using OxyPlot.Rendering.Utilities;
+#pragma warning disable MethodDocumentationHeader
+#pragma warning disable MethodDocumentationHeader
+#pragma warning disable ConstructorDocumentationHeader
+
 namespace OxyPlot
 {
     using System;
@@ -325,6 +330,15 @@ namespace OxyPlot
                 binOffset);
         }
 
+
+
+        // Static pools for reuse
+        private static readonly ObjectPool<List<OxyRect>> EllipseListPool = new(() => new List<OxyRect>(1000));
+        private static readonly ObjectPool<List<OxyRect>> RectListPool = new(() => new List<OxyRect>(1000));
+        private static readonly ObjectPool<List<IList<ScreenPoint>>> PolygonListPool = new(() => new List<IList<ScreenPoint>>(1000));
+        private static readonly ObjectPool<List<ScreenPoint>> LineListPool = new(() => new List<ScreenPoint>(2000));
+        private static readonly ObjectPool<HashSet<uint>> BinSetPool = new(() => new HashSet<uint>(1000));
+
         /// <summary>
         /// Draws a list of markers.
         /// </summary>
@@ -340,133 +354,140 @@ namespace OxyPlot
         /// <param name="resolution">The resolution.</param>
         /// <param name="binOffset">The bin Offset.</param>
         public static void DrawMarkers(
-    this IRenderContext rc,
-    IList<ScreenPoint> markerPoints,
-    MarkerType markerType,
-    IList<ScreenPoint>? markerOutline,
-    IList<double> markerSize,
-    OxyColor markerFill,
-    OxyColor markerStroke,
-    double markerStrokeThickness,
-    EdgeRenderingMode edgeRenderingMode,
-    int resolution = 0,
-    ScreenPoint binOffset = default)
+            this IRenderContext rc,
+            IList<ScreenPoint> markerPoints,
+            MarkerType markerType,
+            IList<ScreenPoint>? markerOutline,
+            IList<double> markerSize,
+            OxyColor markerFill,
+            OxyColor markerStroke,
+            double markerStrokeThickness,
+            EdgeRenderingMode edgeRenderingMode,
+            int resolution = 0,
+            ScreenPoint binOffset = default)
         {
-             
             if (markerType == MarkerType.None || markerPoints == null || markerPoints.Count == 0)
             {
                 return;
             }
 
-             
             List<OxyRect>? ellipses = null;
             List<OxyRect>? rects = null;
             List<IList<ScreenPoint>>? polygons = null;
             List<ScreenPoint>? lines = null;
-             
-            int n = markerPoints.Count;
-
-            switch (markerType)
-            {
-                case MarkerType.Circle:
-                    ellipses = new List<OxyRect>(n);
-                    break;
-
-                case MarkerType.Square:
-                case MarkerType.Diamond:
-                    rects = new List<OxyRect>(n);
-                    break;
-
-                case MarkerType.Triangle:
-                case MarkerType.Custom:
-                    polygons = new List<IList<ScreenPoint>>(n);
-                    break;
-
-                case MarkerType.Plus:
-                case MarkerType.Cross:
-                case MarkerType.Star:
-                    lines = new List<ScreenPoint>(n * 2);
-                    break;
-
-                // If you have other marker types, handle them or fallback
-                default:
-                    polygons = new List<IList<ScreenPoint>>(n);
-                    break;
-            }
-             
             HashSet<uint>? usedBins = null;
-            if (resolution > 1)
-            {
-                usedBins = new HashSet<uint>();
-            }
-             
-            int i = 0;
-            foreach (var point in markerPoints)
-            { 
-                if (usedBins != null)
-                { 
-                    int x = (int)((point.X - binOffset.X) / resolution);
-                    int y = (int)((point.Y - binOffset.Y) / resolution);
-                     
-                    uint key = ((uint)x << 16) ^ (uint)(y & 0xFFFF);
 
-                    // If we already drew a marker in this bin, skip
-                    if (!usedBins.Add(key))
-                    {
-                        i++;
-                        continue;
-                    }
+            try
+            {
+                // Get collections from pool based on marker type
+                switch (markerType)
+                {
+                    case MarkerType.Circle:
+                        ellipses = EllipseListPool.Get();
+                        ellipses.Clear();
+                        break;
+
+                    case MarkerType.Square:
+                    case MarkerType.Diamond:
+                        rects = RectListPool.Get();
+                        rects.Clear();
+                        break;
+
+                    case MarkerType.Triangle:
+                    case MarkerType.Custom:
+                        polygons = PolygonListPool.Get();
+                        polygons.Clear();
+                        break;
+
+                    case MarkerType.Plus:
+                    case MarkerType.Cross:
+                    case MarkerType.Star:
+                        lines = LineListPool.Get();
+                        lines.Clear();
+                        break;
+
+                    default:
+                        polygons = PolygonListPool.Get();
+                        polygons.Clear();
+                        break;
                 }
 
+                if (resolution > 1)
+                {
+                    usedBins = BinSetPool.Get();
+                    usedBins.Clear();
+                }
 
-                var j = i < markerSize.Count ? i : 0;
+                // Rest of the existing logic...
+                int i = 0;
+                foreach (var point in markerPoints)
+                {
+                    if (usedBins != null)
+                    {
+                        int x = (int)((point.X - binOffset.X) / resolution);
+                        int y = (int)((point.Y - binOffset.Y) / resolution);
+                        uint key = ((uint)x << 16) ^ (uint)(y & 0xFFFF);
 
-                // Pick a size from the markerSize list (wrap or fallback to 0)
-               // int sizeIndex = (i < markerSize.Count) ? i : 0;
-                double thisMarkerSize = markerSize[j];// markerSize markerSize[sizeIndex];
+                        if (!usedBins.Add(key))
+                        {
+                            i++;
+                            continue;
+                        }
+                    }
 
-                // Build geometry for this marker
-                // Only populate the geometry collection(s) that exist:
-                AddMarkerGeometry(
-                    point,
-                    markerType,
-                    markerOutline,
-                    thisMarkerSize,
-                    ellipses,
-                    rects,
-                    polygons,
-                    lines);
+                    var j = i < markerSize.Count ? i : 0;
+                    double thisMarkerSize = markerSize[j];
 
-                i++;
+                    AddMarkerGeometry(
+                        point,
+                        markerType,
+                        markerOutline,
+                        thisMarkerSize,
+                        ellipses,
+                        rects,
+                        polygons,
+                        lines);
+
+                    i++;
+                }
+
+                if (edgeRenderingMode == EdgeRenderingMode.Automatic)
+                {
+                    edgeRenderingMode = EdgeRenderingMode.PreferGeometricAccuracy;
+                }
+
+                // Draw calls
+                if (ellipses?.Count > 0)
+                {
+                    rc.DrawEllipses(ellipses, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
+                }
+
+                if (rects?.Count > 0)
+                {
+                    rc.DrawRectangles(rects, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
+                }
+
+                if (polygons?.Count > 0)
+                {
+                    rc.DrawPolygons(polygons, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
+                }
+
+                if (lines?.Count > 0)
+                {
+                    rc.DrawLineSegments(lines, markerStroke, markerStrokeThickness, edgeRenderingMode);
+                }
             }
-
-            // 4. Decide edge rendering mode
-            if (edgeRenderingMode == EdgeRenderingMode.Automatic)
+            finally
             {
-                edgeRenderingMode = EdgeRenderingMode.PreferGeometricAccuracy;
-            }
-
-            // 5. Perform draw calls only for non-empty geometry collections
-            if (ellipses != null && ellipses.Count > 0)
-            {
-                rc.DrawEllipses(ellipses, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
-            }
-
-            if (rects != null && rects.Count > 0)
-            {
-                rc.DrawRectangles(rects, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
-            }
-
-            if (polygons != null && polygons.Count > 0)
-            {
-                rc.DrawPolygons(polygons, markerFill, markerStroke, markerStrokeThickness, edgeRenderingMode);
-            }
-
-            if (lines != null && lines.Count > 0)
-            {
-                rc.DrawLineSegments(lines, markerStroke, markerStrokeThickness, edgeRenderingMode);
+                // Return collections to pool
+                if (ellipses != null) EllipseListPool.Return(ellipses);
+                if (rects != null) RectListPool.Return(rects);
+                if (polygons != null) PolygonListPool.Return(polygons);
+                if (lines != null) LineListPool.Return(lines);
+                if (usedBins != null) BinSetPool.Return(usedBins);
             }
         }
+
 
         /// <summary>
         /// Draws a circle at the specified position.
@@ -583,8 +604,10 @@ namespace OxyPlot
             return new AutoResetClipToken(rc, clippingRectangle);
         }
  
+#pragma warning disable MethodDocumentationHeader
         private static void AddMarkerGeometry(
-    ScreenPoint center,
+#pragma warning restore MethodDocumentationHeader
+            ScreenPoint center,
     MarkerType markerType,
     IList<ScreenPoint>? markerOutline,
     double markerSize,
@@ -823,7 +846,9 @@ namespace OxyPlot
                 renderContext.PushClip(clippingRectangle);
             }
 
+#pragma warning disable MethodDocumentationHeader
             void IDisposable.Dispose()
+#pragma warning restore MethodDocumentationHeader
             {
                 this.renderContext.PopClip();
             }

@@ -1,14 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net462;net6.0-windows;net8.0-windows</TargetFrameworks>
+      <TargetFramework>net8.0-windows8.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <LangVersion>8</LangVersion>
     <Description>OxyPlot is a plotting library for .NET. This package is the base for WPF PlotView implementations.</Description>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageTags>plotting plot charting chart wpf</PackageTags>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>OxyPlot.Wpf.Shared.snk</AssemblyOriginatorKeyFile>
+    <NuGetAudit>False</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
     <None Include="OxyPlot.Wpf.Shared.snk" />

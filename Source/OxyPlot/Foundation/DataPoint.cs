@@ -30,14 +30,14 @@ namespace OxyPlot
         /// </summary>
         [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1307:AccessibleFieldsMustBeginWithUpperCaseLetter",
             Justification = "Reviewed. Suppression is OK here.")]
-        internal readonly double x;
+        internal double x;
 
         /// <summary>
         /// The y-coordinate.
         /// </summary>
         [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1307:AccessibleFieldsMustBeginWithUpperCaseLetter",
             Justification = "Reviewed. Suppression is OK here.")]
-        internal readonly double y;
+        internal double y;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DataPoint" /> struct.
@@ -60,6 +60,7 @@ namespace OxyPlot
             {
                 return this.x;
             }
+            set => this.x = value;
         }
 
         /// <summary>
@@ -72,6 +73,7 @@ namespace OxyPlot
             {
                 return this.y;
             }
+            set => this.y = value;
         }
 
         /// <summary>
