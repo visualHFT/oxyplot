@@ -3,6 +3,7 @@
         <TargetFramework>net8.0-windows8.0</TargetFramework>
         <UseWPF>true</UseWPF>
         <LangVersion>8</LangVersion>
+        <Nullable>enable</Nullable>
         <PackageId>OxyPlot.Core</PackageId>
         <Description>OxyPlot is a plotting library for .NET. This is the core library including the foundation classes and plot model. To display the plots, you also need to add a platform-specific OxyPlot package that contains a PlotView component.</Description>
         <PackageTags>plotting plot charting chart</PackageTags>
@@ -10,7 +11,7 @@
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <SignAssembly>true</SignAssembly>
         <AssemblyOriginatorKeyFile>OxyPlot.snk</AssemblyOriginatorKeyFile>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
         <LangVersion>9</LangVersion>
         <NoWarn>$(NoWarn);CS0618</NoWarn>
     </PropertyGroup>

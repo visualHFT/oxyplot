@@ -318,6 +318,26 @@ namespace OxyPlot.Series
             return result;
         }
 
+
+
+        // --- Member Variables for Reusable Collections ---
+
+        // For storing processed points before drawing
+        private readonly List<ScreenPoint> _allPoints = new List<ScreenPoint>();
+        private readonly List<double> _allMarkerSizes = new List<double>();
+        private readonly List<ScreenPoint> _selectedPoints = new List<ScreenPoint>();
+        private readonly List<double> _selectedMarkerSizes = new List<double>();
+
+        // Using combined data structure is better for allocs during processing & potentially drawing
+        // Key: group index, Value: List of (Point, Size) tuples for that group
+        private readonly Dictionary<int, List<(ScreenPoint Point, double Size)>> _groupedData =
+            new Dictionary<int, List<(ScreenPoint Point, double Size)>>();
+
+        // Pooling for drawing loop temporaries (ONLY if splitting tuple is unavoidable for DrawMarkers)
+        private readonly List<ScreenPoint> _pooledPointsForDrawing = new List<ScreenPoint>();
+        private readonly List<double> _pooledSizesForDrawing = new List<double>();
+
+        // --- End Member Variables ---
         /// <inheritdoc/>
         public override void Render(IRenderContext rc)
         {
@@ -325,18 +345,34 @@ namespace OxyPlot.Series
 
             if (actualPoints == null || actualPoints.Count == 0)
             {
+                // If the data source might shrink, clearing ensures memory isn't held indefinitely.
+                _allPoints.Clear();
+                _allMarkerSizes.Clear();
+                _selectedPoints.Clear();
+                _selectedMarkerSizes.Clear();
+                foreach (var list in _groupedData.Values) list.Clear(); // Keep lists, clear contents
                 return;
             }
 
             var clippingRect = this.GetClippingRect();
 
             int n = actualPoints.Count;
-            var allPoints = new List<ScreenPoint>(n);
+            // --- Clear Reusable Member Collections ---
+            _allPoints.Clear();
+            _allMarkerSizes.Clear();
+            _selectedPoints.Clear();
+            _selectedMarkerSizes.Clear();
+            // Clear lists WITHIN the dictionary. Don't clear the dictionary itself if group keys persist.
+            foreach (var list in _groupedData.Values)
+            {
+                list.Clear(); // Reuses the List<T> instances
+            }
+            /*var allPoints = new List<ScreenPoint>(n);
             var allMarkerSizes = new List<double>(n);
             var selectedPoints = new List<ScreenPoint>();
             var selectedMarkerSizes = new List<double>(n);
             var groupPoints = new Dictionary<int, IList<ScreenPoint>>();
-            var groupSizes = new Dictionary<int, IList<double>>();
+            var groupSizes = new Dictionary<int, IList<double>>();*/
 
             // check if any item of the series is selected
             bool isSelected = this.IsSelected();
@@ -344,61 +380,52 @@ namespace OxyPlot.Series
             // Transform all points to screen coordinates
             for (int i = 0; i < n; i++)
             {
-                var dp = new DataPoint(actualPoints[i].X, actualPoints[i].Y);
+                var currentActualPoint = actualPoints[i];
+                if (currentActualPoint == null) continue;
 
-                // Skip invalid points
-                if (!this.IsValidPoint(dp))
-                {
-                    continue;
-                }
+                var pointX = currentActualPoint.X;
+                var pointY = currentActualPoint.Y;
 
-                double size = double.NaN;
-                double value = double.NaN;
+                // Ensure IsValidPoint doesn't allocate. Profile!
+                if (!this.IsValidPoint(pointX, pointY)) continue;
 
-                var scatterPoint = actualPoints[i];
-                if (scatterPoint != null)
-                {
-                    size = scatterPoint.Size;
-                    value = scatterPoint.Value;
-                }
-
-                if (double.IsNaN(size))
-                {
-                    size = this.MarkerSize;
-                }
+                double size = currentActualPoint.Size;
+                if (double.IsNaN(size)) size = this.MarkerSize;
 
                 // Transform from data to screen coordinates
-                var screenPoint = this.Transform(dp.X, dp.Y);
+                var screenPoint = this.Transform(pointX, pointY);
 
                 if (isSelected && this.IsItemSelected(i))
                 {
-                    selectedPoints.Add(screenPoint);
-                    selectedMarkerSizes.Add(size);
+                    //selectedPoints.Add(screenPoint);
+                    //selectedMarkerSizes.Add(size);
+                    _selectedPoints.Add(screenPoint); // Add to member list
+                    _selectedMarkerSizes.Add(size);   // Add to member list
                     continue;
                 }
 
                 if (this.ColorAxis != null)
                 {
-                    if (double.IsNaN(value))
-                    {
-                        // The value is not defined, skip this point.
-                        continue;
-                    }
+                    double value = currentActualPoint.Value;
+                    if (double.IsNaN(value)) continue;
 
+                    // Ensure GetPaletteIndex doesn't allocate. Profile!
                     int group = this.ColorAxis.GetPaletteIndex(value);
-                    if (!groupPoints.ContainsKey(group))
-                    {
-                        groupPoints.Add(group, new List<ScreenPoint>());
-                        groupSizes.Add(group, new List<double>());
-                    }
 
-                    groupPoints[group].Add(screenPoint);
-                    groupSizes[group].Add(size);
+                    // Use TryGetValue on the member dictionary
+                    if (!_groupedData.TryGetValue(group, out var currentGroupList))
+                    {
+                        // *** Allocation only when a NEW group appears ***
+                        currentGroupList = new List<(ScreenPoint Point, double Size)>(); // Consider pooling these Lists too? Advanced.
+                        _groupedData.Add(group, currentGroupList);
+                    }
+                    // Add tuple (struct) to the list. Minimal allocation unless list resizes.
+                    currentGroupList.Add((screenPoint, size));
                 }
                 else
                 {
-                    allPoints.Add(screenPoint);
-                    allMarkerSizes.Add(size);
+                    _allPoints.Add(screenPoint); // Add to member list
+                    _allMarkerSizes.Add(size);   // Add to member list
                 }
             }
 
@@ -409,15 +436,37 @@ namespace OxyPlot.Series
             {
                 // Draw the grouped (by color defined in ColorAxis) markers
                 var markerIsStrokedOnly = this.MarkerType == MarkerType.Plus || this.MarkerType == MarkerType.Star || this.MarkerType == MarkerType.Cross;
-                foreach (var group in groupPoints)
+                foreach (var groupPair in _groupedData)
                 {
-                    var color = this.ColorAxis.GetColor(group.Key);
+                    var groupDataList = groupPair.Value; // This is List<(Point, Size)>
+                    if (groupDataList.Count == 0) continue;
+
+                    int groupKey = groupPair.Key;
+                    // Ensure GetColor doesn't allocate. Profile!
+                    var color = this.ColorAxis.GetColor(groupKey);
+                    // --- Adaptation if DrawMarkers requires separate lists ---
+                    _pooledPointsForDrawing.Clear(); // Use pooled member list
+                    _pooledSizesForDrawing.Clear();   // Use pooled member list
+                    // Optional: Ensure capacity intelligently
+                    // if (_pooledPointsForDrawing.Capacity < groupDataList.Count) _pooledPointsForDrawing.Capacity = groupDataList.Count;
+                    // if (_pooledSizesForDrawing.Capacity < groupDataList.Count) _pooledSizesForDrawing.Capacity = groupDataList.Count;
+
+                    // Populate pooled lists FROM the combined list
+                    foreach (var (point, sz) in groupDataList)
+                    {
+                        _pooledPointsForDrawing.Add(point);
+                        _pooledSizesForDrawing.Add(sz);
+                    }
+                    // --- End Adaptation ---
+                    // Ensure MarkerFill.GetActualColor doesn't allocate. Profile!
+                    var actualMarkerFill = this.MarkerFill.GetActualColor(color);
+
                     rc.DrawMarkers(
-                        group.Value,
+                        _pooledPointsForDrawing, // Use pooled list
                         this.MarkerType,
                         this.MarkerOutline,
-                        groupSizes[group.Key],
-                        this.MarkerFill.GetActualColor(color),
+                        _pooledSizesForDrawing, // Use pooled list
+                        actualMarkerFill,
                         markerIsStrokedOnly ? color : this.MarkerStroke,
                         this.MarkerStrokeThickness,
                         this.EdgeRenderingMode,
@@ -427,30 +476,11 @@ namespace OxyPlot.Series
             }
 
             // Draw unselected markers
-            rc.DrawMarkers(
-                allPoints,
-                this.MarkerType,
-                this.MarkerOutline,
-                allMarkerSizes,
-                this.ActualMarkerFillColor,
-                this.MarkerStroke,
-                this.MarkerStrokeThickness,
-                this.EdgeRenderingMode,
-                this.BinSize,
-                binOffset);
+            rc.DrawMarkers(_allPoints, this.MarkerType, this.MarkerOutline, _allMarkerSizes, this.ActualMarkerFillColor, this.MarkerStroke, this.MarkerStrokeThickness, this.EdgeRenderingMode, this.BinSize, binOffset); // Profile!
+
 
             // Draw the selected markers
-            rc.DrawMarkers(
-                selectedPoints,
-                this.MarkerType,
-                this.MarkerOutline,
-                selectedMarkerSizes,
-                this.PlotModel.SelectionColor,
-                this.PlotModel.SelectionColor,
-                this.MarkerStrokeThickness,
-                this.EdgeRenderingMode,
-                this.BinSize,
-                binOffset);
+            rc.DrawMarkers(_selectedPoints, this.MarkerType, this.MarkerOutline, _selectedMarkerSizes, this.PlotModel.SelectionColor, this.PlotModel.SelectionColor, this.MarkerStrokeThickness, this.EdgeRenderingMode, this.BinSize, binOffset);
 
             if (this.LabelFormatString != null)
             {

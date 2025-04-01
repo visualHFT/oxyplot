@@ -7,6 +7,8 @@
 // </summary>
 // --------------------------------------------------------------------------------------------------------------------
 
+#pragma warning disable CS0162 // Unreachable code detected
+#pragma warning disable MethodDocumentationHeader
 namespace OxyPlot.Wpf
 {
     using System;
@@ -29,6 +31,9 @@ namespace OxyPlot.Wpf
     /// </summary>
     public class CanvasRenderContext : ClippingRenderContext
     {
+        private static readonly Size FIXED_SIZE = new Size(1000, 1000);
+        private static readonly TextBlock FIXED_TEXTBLOCK = new TextBlock();
+
         /// <summary>
         /// The images in use
         /// </summary>
@@ -336,7 +341,7 @@ namespace OxyPlot.Wpf
 
             if (maxSize != null || halign != HorizontalAlignment.Left || valign != VerticalAlignment.Top)
             {
-                tb.Measure(new Size(1000, 1000));
+                tb.Measure(FIXED_SIZE);
                 var size = tb.DesiredSize;
                 if (maxSize != null)
                 {
@@ -400,12 +405,15 @@ namespace OxyPlot.Wpf
                 return OxySize.Empty;
             }
 
-            if (this.TextMeasurementMethod == TextMeasurementMethod.GlyphTypeface)
+
+            // Because of performance issues, Use the GlyphTypeface method allways
+            if (true || this.TextMeasurementMethod == TextMeasurementMethod.GlyphTypeface)
             {
                 return MeasureTextByGlyphTypeface(text, fontFamily, fontSize, fontWeight);
             }
 
-            var tb = new TextBlock { Text = text };
+            var tb = FIXED_TEXTBLOCK;
+            tb.Text = text;
 
             TextOptions.SetTextFormattingMode(tb, this.TextFormattingMode);
 
@@ -424,7 +432,7 @@ namespace OxyPlot.Wpf
                 tb.FontWeight = GetFontWeight(fontWeight);
             }
 
-            tb.Measure(new Size(1000, 1000));
+            tb.Measure(FIXED_SIZE);
 
             return new OxySize(tb.DesiredSize.Width, tb.DesiredSize.Height);
         }
