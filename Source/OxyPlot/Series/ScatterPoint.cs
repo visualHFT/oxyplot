@@ -14,6 +14,10 @@ namespace OxyPlot.Series
     /// </summary>
     public class ScatterPoint : ICodeGenerating
     {
+        public ScatterPoint()
+        {
+            
+        }
         /// <summary>
         /// Initializes a new instance of the <see cref="ScatterPoint" /> class.
         /// </summary>
@@ -35,13 +39,13 @@ namespace OxyPlot.Series
         /// Gets the X.
         /// </summary>
         /// <value>The X.</value>
-        public double X { get; private set; }
+        public double X { get; set; }
 
         /// <summary>
         /// Gets the Y.
         /// </summary>
         /// <value>The Y.</value>
-        public double Y { get; private set; }
+        public double Y { get; set; }
 
         /// <summary>
         /// Gets or sets the size.

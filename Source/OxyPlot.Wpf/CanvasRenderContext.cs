@@ -31,8 +31,8 @@ namespace OxyPlot.Wpf
     /// </summary>
     public class CanvasRenderContext : ClippingRenderContext
     {
-        private static readonly Size FIXED_SIZE = new Size(1000, 1000);
         private static readonly TextBlock FIXED_TEXTBLOCK = new TextBlock();
+        private static readonly Size FIXED_SIZE = new Size(1000, 1000);
 
         /// <summary>
         /// The images in use
@@ -303,6 +303,30 @@ namespace OxyPlot.Wpf
             path.Data = streamGeometry;
         }
 
+        // Cache for text measurements
+        private readonly Dictionary<(string Text, string FontFamily, double FontSize, double FontWeight), System.Windows.Size> textMeasurementCache
+            = new Dictionary<(string, string, double, double), System.Windows.Size>();
+
+        // Helper method for measuring text with caching
+        private System.Windows.Size MeasureTextWithCache(TextBlock tb, string text, string fontFamily, double fontSize, double fontWeight)
+        {
+            var key = (text, fontFamily, fontSize, fontWeight);
+
+            if (this.textMeasurementCache.TryGetValue(key, out var cachedSize))
+                return cachedSize;
+
+            // Use more reasonable initial size constraint based on font size
+            var constraintSize = new System.Windows.Size(
+                Math.Min(4096, fontSize * text.Length * 2), // Rough estimate
+                Math.Min(4096, fontSize * 4)); // Rough estimate for height
+
+            tb.Measure(constraintSize);
+            var size = new System.Windows.Size(tb.DesiredSize.Width, tb.DesiredSize.Height);
+
+            this.textMeasurementCache[key] = size;
+            return size;
+        }
+
         ///<inheritdoc/>
         public override void DrawText(
             ScreenPoint p,
@@ -341,8 +365,9 @@ namespace OxyPlot.Wpf
 
             if (maxSize != null || halign != HorizontalAlignment.Left || valign != VerticalAlignment.Top)
             {
-                tb.Measure(FIXED_SIZE);
-                var size = tb.DesiredSize;
+                /*tb.Measure(new Size(1000, 1000));
+                var size = tb.DesiredSize;*/
+                var size = this.MeasureTextWithCache(tb, text, fontFamily, fontSize, fontWeight);
                 if (maxSize != null)
                 {
                     if (size.Width > maxSize.Value.Width + 1e-3)
@@ -517,6 +542,7 @@ namespace OxyPlot.Wpf
             this.imagesInUse.Clear();
         }
 
+        
         /// <summary>
         /// Measures the size of the specified text by a faster method (using GlyphTypefaces).
         /// </summary>
@@ -553,6 +579,20 @@ namespace OxyPlot.Wpf
             return fontWeight > FontWeights.Normal ? System.Windows.FontWeights.Bold : System.Windows.FontWeights.Normal;
         }
 
+
+
+        private static readonly Dictionary<char, double> AdvanceWidthCache = new Dictionary<char, double>();
+        private static double GetAdvanceWidth(GlyphTypeface glyphTypeface, char ch)
+        {
+            if (AdvanceWidthCache.TryGetValue(ch, out var width))
+                return width;
+
+            var glyph = glyphTypeface.CharacterToGlyphMap[ch];
+            width = glyphTypeface.AdvanceWidths[glyph];
+            AdvanceWidthCache[ch] = width;
+            return width;
+        }
+
         /// <summary>
         /// Fast text size calculation
         /// </summary>
@@ -583,7 +623,8 @@ namespace OxyPlot.Wpf
                 }
 
                 var glyph = glyphTypeface.CharacterToGlyphMap[ch];
-                var advanceWidth = glyphTypeface.AdvanceWidths[glyph];
+                //var advanceWidth = glyphTypeface.AdvanceWidths[glyph];
+                var advanceWidth = GetAdvanceWidth(glyphTypeface, ch);
                 lineWidth += advanceWidth;
             }
 
