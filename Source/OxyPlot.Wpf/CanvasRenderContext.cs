@@ -110,39 +110,105 @@ namespace OxyPlot.Wpf
         }
 
         ///<inheritdoc/>
-        public override void DrawEllipses(IList<OxyRect> rectangles, OxyColor fill, OxyColor stroke, double thickness, EdgeRenderingMode edgeRenderingMode)
+        public override void DrawEllipses(
+            IList<OxyRect> rectangles,
+            OxyColor fill,
+            OxyColor stroke,
+            double thickness,
+            EdgeRenderingMode edgeRenderingMode)
         {
-            if (rectangles.Count == 0)
-            {
+            int count = rectangles.Count;
+            if (count == 0)
                 return;
-            }
 
+            // Create and configure the Path element once
             var path = this.CreateAndAdd<Path>();
             this.SetStroke(path, stroke, thickness, edgeRenderingMode);
-            if (!fill.IsUndefined())
+
+            bool isFilled = !fill.IsUndefined();
+            if (isFilled)
             {
                 path.Fill = this.GetCachedBrush(fill);
             }
+            bool isStroked = !stroke.IsUndefined();
 
-            var isFilled = !fill.IsUndefined();
-            var isStroke = !stroke.IsUndefined();
+            // Use a single StreamGeometry to draw all ellipses
             var streamGeometry = new StreamGeometry { FillRule = FillRule.Nonzero };
-            using (var sgc = streamGeometry.Open())
-            {
-                foreach (var rect in rectangles)
-                {
-                    var centerY = rect.Center.Y;
-                    sgc.BeginFigure(new Point(rect.Right, centerY), isFilled, true);
 
-                    var size = new Size(rect.Width / 2, rect.Height / 2);
-                    sgc.ArcTo(new Point(rect.Left, centerY), size, 180, false, SweepDirection.Clockwise, isStroke, false);
-                    sgc.ArcTo(new Point(rect.Right, centerY), size, 180, false, SweepDirection.Clockwise, isStroke, false);
+            // Choose how many segments you want to approximate each ellipse.
+            // 8 or 12 is often enough; you can increase for smoother circles.
+            const int steps = 5;
+            double angleStep = 2.0 * Math.PI / steps;
+
+            using (var ctx = streamGeometry.Open())
+            {
+                // For each ellipse, approximate it with 'steps' line segments
+                for (int i = 0; i < count; i++)
+                {
+                    var rect = rectangles[i];
+                    double centerX = rect.Left + rect.Width * 0.5;
+                    double centerY = rect.Top + rect.Height * 0.5;
+                    double radiusX = rect.Width * 0.5;
+                    double radiusY = rect.Height * 0.5;
+
+                    // Start at angle = 0
+                    double angle = 0.0;
+                    // Compute the first point
+                    double x0 = centerX + radiusX * Math.Cos(angle);
+                    double y0 = centerY + radiusY * Math.Sin(angle);
+
+                    // Begin a new figure for this ellipse
+                    ctx.BeginFigure(new Point(x0, y0), isFilled, true);
+
+                    // Generate line segments around the circle/ellipse
+                    for (int s = 1; s < steps; s++)
+                    {
+                        angle += angleStep;
+                        double x1 = centerX + radiusX * Math.Cos(angle);
+                        double y1 = centerY + radiusY * Math.Sin(angle);
+                        ctx.LineTo(new Point(x1, y1), isStroked, false);
+                    }
                 }
             }
 
+            // Freeze the geometry once to optimize rendering
             streamGeometry.Freeze();
             path.Data = streamGeometry;
         }
+
+        //public override void DrawEllipses(IList<OxyRect> rectangles, OxyColor fill, OxyColor stroke, double thickness, EdgeRenderingMode edgeRenderingMode)
+        //{
+        //    int count = rectangles.Count;
+        //    if (count == 0)
+        //        return;
+
+        //    // Create and configure the Path element.
+        //    var path = this.CreateAndAdd<Path>();
+        //    this.SetStroke(path, stroke, thickness, edgeRenderingMode);
+
+        //    bool isFilled = !fill.IsUndefined();
+        //    if (isFilled)
+        //    {
+        //        path.Fill = this.GetCachedBrush(fill);
+        //    }
+
+        //    // Instead of building a StreamGeometry with arcs, build a GeometryGroup of EllipseGeometry instances.
+        //    GeometryGroup geometryGroup = new GeometryGroup();
+
+        //    for (int i = 0; i < count; i++)
+        //    {
+        //        // Create an EllipseGeometry for each rectangle.
+        //        // OxyRect has Left, Top, Width, and Height.
+        //        var rect = rectangles[i];
+        //        var ellipse = new EllipseGeometry(new Rect(rect.Left, rect.Top, rect.Width, rect.Height));
+        //        // Freeze the geometry for performance.
+        //        ellipse.Freeze();
+        //        geometryGroup.Children.Add(ellipse);
+        //    }
+
+        //    geometryGroup.Freeze();
+        //    path.Data = geometryGroup;
+        //}
 
         ///<inheritdoc/>
         public override void DrawLine(
@@ -273,35 +339,63 @@ namespace OxyPlot.Wpf
             this.DrawRectangles(new[] { rect }, fill, stroke, thickness, edgeRenderingMode);
         }
 
+
+        private readonly Point[] polyPoints = new Point[3]{new Point(), new Point(), new Point()};
         ///<inheritdoc/>
         public override void DrawRectangles(IList<OxyRect> rectangles, OxyColor fill, OxyColor stroke, double thickness, EdgeRenderingMode edgeRenderingMode)
         {
-            if (rectangles.Count == 0)
-            {
+            int count = rectangles.Count;
+            if (count == 0)
                 return;
-            }
 
+            // Create a Path element and configure stroke once.
             var path = this.CreateAndAdd<Path>();
             this.SetStroke(path, stroke, thickness, edgeRenderingMode);
-            if (!fill.IsUndefined())
+
+            // Cache fill and stroke flags.
+            bool fillDefined = !fill.IsUndefined();
+            bool strokeDefined = !stroke.IsUndefined();
+
+            if (fillDefined)
             {
                 path.Fill = this.GetCachedBrush(fill);
             }
 
+            // Create a single StreamGeometry (consider pooling if available).
             var streamGeometry = new StreamGeometry { FillRule = FillRule.Nonzero };
+
+            // Cache the polyPoints array reference locally.
+            Point[] pts = this.polyPoints;  // polyPoints is a preallocated array of size 3
+
             using (var context = streamGeometry.Open())
             {
-                foreach (var rect in rectangles)
+                // Iterate using a simple for-loop.
+                for (int i = 0; i < count; i++)
                 {
-                    var r = this.GetActualRect(rect, thickness, edgeRenderingMode);
-                    context.BeginFigure(r.TopLeft, !fill.IsUndefined(), true);
-                    context.PolyLineTo(new[] { r.TopRight, r.BottomRight, r.BottomLeft }, !stroke.IsUndefined(), false);
+                    // Get the actual rectangle.
+                    // If possible, inline or simplify GetActualRect to reduce call overhead.
+                    var r = this.GetActualRect(rectangles[i], thickness, edgeRenderingMode);
+
+                    // Begin the figure at TopLeft.
+                    context.BeginFigure(r.TopLeft, fillDefined, true);
+
+                    // Reuse the same array for the other three corners.
+                    pts[0] = r.TopRight;
+                    pts[1] = r.BottomRight;
+                    pts[2] = r.BottomLeft;
+
+                    // Call PolyLineTo with the preallocated array.
+                    context.PolyLineTo(pts, strokeDefined, false);
                 }
             }
 
+            // Freeze the geometry to optimize rendering.
             streamGeometry.Freeze();
             path.Data = streamGeometry;
         }
+
+
+
 
         // Cache for text measurements
         private readonly Dictionary<(string Text, string FontFamily, double FontSize, double FontWeight), System.Windows.Size> textMeasurementCache

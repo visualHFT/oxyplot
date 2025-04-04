@@ -345,7 +345,7 @@ namespace OxyPlot
         {
             if (this.Axes.Count > 0)
             {
-                rc.DrawRectangle(this.PlotArea, this.PlotAreaBorderColor, this.PlotAreaBorderThickness, this.EdgeRenderingMode.GetActual(EdgeRenderingMode.PreferSharpness));
+                rc.DrawRectangle(this.PlotArea, this.PlotAreaBorderColor, this.PlotAreaBorderThickness, this.EdgeRenderingMode);
             }
         }
 
