@@ -103,6 +103,7 @@ namespace OxyPlot.Wpf
         /// <value>The text formatting mode. The default value is <see cref="System.Windows.Media.TextFormattingMode.Display"/>.</value>
         public TextFormattingMode TextFormattingMode { get; set; }
 
+
         ///<inheritdoc/>
         public override void DrawEllipse(OxyRect rect, OxyColor fill, OxyColor stroke, double thickness, EdgeRenderingMode edgeRenderingMode)
         {
@@ -176,39 +177,7 @@ namespace OxyPlot.Wpf
             path.Data = streamGeometry;
         }
 
-        //public override void DrawEllipses(IList<OxyRect> rectangles, OxyColor fill, OxyColor stroke, double thickness, EdgeRenderingMode edgeRenderingMode)
-        //{
-        //    int count = rectangles.Count;
-        //    if (count == 0)
-        //        return;
 
-        //    // Create and configure the Path element.
-        //    var path = this.CreateAndAdd<Path>();
-        //    this.SetStroke(path, stroke, thickness, edgeRenderingMode);
-
-        //    bool isFilled = !fill.IsUndefined();
-        //    if (isFilled)
-        //    {
-        //        path.Fill = this.GetCachedBrush(fill);
-        //    }
-
-        //    // Instead of building a StreamGeometry with arcs, build a GeometryGroup of EllipseGeometry instances.
-        //    GeometryGroup geometryGroup = new GeometryGroup();
-
-        //    for (int i = 0; i < count; i++)
-        //    {
-        //        // Create an EllipseGeometry for each rectangle.
-        //        // OxyRect has Left, Top, Width, and Height.
-        //        var rect = rectangles[i];
-        //        var ellipse = new EllipseGeometry(new Rect(rect.Left, rect.Top, rect.Width, rect.Height));
-        //        // Freeze the geometry for performance.
-        //        ellipse.Freeze();
-        //        geometryGroup.Children.Add(ellipse);
-        //    }
-
-        //    geometryGroup.Freeze();
-        //    path.Data = geometryGroup;
-        //}
 
         ///<inheritdoc/>
         public override void DrawLine(
@@ -459,8 +428,6 @@ namespace OxyPlot.Wpf
 
             if (maxSize != null || halign != HorizontalAlignment.Left || valign != VerticalAlignment.Top)
             {
-                /*tb.Measure(new Size(1000, 1000));
-                var size = tb.DesiredSize;*/
                 var size = this.MeasureTextWithCache(tb, text, fontFamily, fontSize, fontWeight);
                 if (maxSize != null)
                 {
@@ -526,7 +493,7 @@ namespace OxyPlot.Wpf
 
 
             // Because of performance issues, Use the GlyphTypeface method allways
-            if (true || this.TextMeasurementMethod == TextMeasurementMethod.GlyphTypeface)
+            if (true)
             {
                 return MeasureTextByGlyphTypeface(text, fontFamily, fontSize, fontWeight);
             }
@@ -716,8 +683,6 @@ namespace OxyPlot.Wpf
                         continue;
                 }
 
-                var glyph = glyphTypeface.CharacterToGlyphMap[ch];
-                //var advanceWidth = glyphTypeface.AdvanceWidths[glyph];
                 var advanceWidth = GetAdvanceWidth(glyphTypeface, ch);
                 lineWidth += advanceWidth;
             }
@@ -740,7 +705,6 @@ namespace OxyPlot.Wpf
         /// <returns>The element.</returns>
         protected T CreateAndAdd<T>(double clipOffsetX = 0, double clipOffsetY = 0) where T : FrameworkElement, new()
         {
-            // TODO: here we can reuse existing elements in the canvas.Children collection
             var element = new T();
 
             if (this.clip != null)

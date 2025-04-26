@@ -78,6 +78,12 @@ namespace OxyPlot
             return edgeRenderingMode == EdgeRenderingMode.Automatic ? defaultValue : edgeRenderingMode;
         }
 
+        // -------------------------------------------------------
+        // RENT-AND-RETURN POOL FOR OUR REDUCTION BUFFER
+        // -------------------------------------------------------
+        private static readonly ObjectPool<List<ScreenPoint>> _reduceBufferPool
+            = new ObjectPool<List<ScreenPoint>>(() => new List<ScreenPoint>());
+
         /// <summary>
         /// Draws a clipped polyline through the specified points.
         /// </summary>
@@ -103,7 +109,7 @@ namespace OxyPlot
             List<ScreenPoint>? outputBuffer = null,
             Action<IList<ScreenPoint>>? pointsRendered = null)
         {
-            var n = points.Count;
+            int n = points.Count;
             if (n == 0)
             {
                 return;
@@ -111,21 +117,31 @@ namespace OxyPlot
 
             if (outputBuffer != null)
             {
+                // user‐provided buffer: preserve original semantics
                 outputBuffer.Clear();
-                outputBuffer.Capacity = n;
+                ReducePoints(points, minDistSquared, outputBuffer);
+                rc.DrawLine(outputBuffer, stroke, strokeThickness, edgeRenderingMode, dashArray, lineJoin);
+
+                // restore buffer to full original for callback
+                outputBuffer.Clear();
+                outputBuffer.AddRange(points);
+                pointsRendered?.Invoke(outputBuffer);
             }
             else
             {
-                outputBuffer = new List<ScreenPoint>(n);
+                // hot‐path: rent a pooled buffer, never realloc from here on
+                var buf = _reduceBufferPool.Get();
+                buf.Clear();
+                ReducePoints(points, minDistSquared, buf);
+                rc.DrawLine(buf, stroke, strokeThickness, edgeRenderingMode, dashArray, lineJoin);
+
+                // callback with the original list (no copying)
+                pointsRendered?.Invoke(points);
+
+                // put it back
+                buf.Clear();
+                _reduceBufferPool.Return(buf);
             }
-
-            ReducePoints(points, minDistSquared, outputBuffer);
-            rc.DrawLine(outputBuffer, stroke, strokeThickness, edgeRenderingMode, dashArray, lineJoin);
-
-            outputBuffer.Clear();
-            outputBuffer.AddRange(points);
-
-            pointsRendered?.Invoke(outputBuffer);
         }
 
         /// <summary>
