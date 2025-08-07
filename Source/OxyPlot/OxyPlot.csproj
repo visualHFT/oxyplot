@@ -14,6 +14,9 @@
         <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
         <LangVersion>9</LangVersion>
         <NoWarn>$(NoWarn);CS0618</NoWarn>
+        <RunAnalyzersDuringBuild>False</RunAnalyzersDuringBuild>
+        <RunAnalyzersDuringLiveAnalysis>False</RunAnalyzersDuringLiveAnalysis>
+        <EnableNETAnalyzers>False</EnableNETAnalyzers>
     </PropertyGroup>
     <ItemGroup>
         <None Include="OxyPlot.snk" />
