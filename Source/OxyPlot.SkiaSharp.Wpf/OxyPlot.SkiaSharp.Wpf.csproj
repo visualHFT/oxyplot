@@ -15,7 +15,7 @@
     <EnableNETAnalyzers>False</EnableNETAnalyzers>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SkiaSharp.Views.Desktop.Common" Version="2.88.8" />
+    <PackageReference Include="SkiaSharp.Views.Desktop.Common" Version="3.119.0" />
     <None Include="OxyPlot.SkiaSharp.Wpf.snk" />
     <None Include="VisualStudioToolsManifest.xml" Pack="true" PackagePath="tools" />
   </ItemGroup>
@@ -23,5 +23,8 @@
     <ProjectReference Include="..\OxyPlot.SkiaSharp\OxyPlot.SkiaSharp.csproj" />
     <ProjectReference Include="..\OxyPlot.Wpf.Shared\OxyPlot.Wpf.Shared.csproj" />
     <ProjectReference Include="..\OxyPlot\OxyPlot.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="DotNet.ReproducibleBuilds" Version="1.2.25" />
   </ItemGroup>
 </Project>
