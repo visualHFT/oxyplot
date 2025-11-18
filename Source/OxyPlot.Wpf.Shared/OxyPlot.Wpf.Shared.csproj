@@ -18,6 +18,6 @@
     <ProjectReference Include="..\OxyPlot\OxyPlot.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Update="DotNet.ReproducibleBuilds" Version="1.2.25" />
+    <PackageReference Update="DotNet.ReproducibleBuilds" Version="1.2.39" />
   </ItemGroup>
 </Project>
