@@ -22,6 +22,6 @@
         <None Include="OxyPlot.snk" />
     </ItemGroup>
     <ItemGroup>
-      <PackageReference Update="DotNet.ReproducibleBuilds" Version="1.2.39" />
+      <PackageReference Update="DotNet.ReproducibleBuilds" Version="2.0.2" />
     </ItemGroup>
 </Project>
