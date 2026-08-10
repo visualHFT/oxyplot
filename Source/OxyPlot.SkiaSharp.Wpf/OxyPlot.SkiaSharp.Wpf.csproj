@@ -15,7 +15,7 @@
     <EnableNETAnalyzers>False</EnableNETAnalyzers>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SkiaSharp.Views.Desktop.Common" Version="4.150.0" />
+    <PackageReference Include="SkiaSharp.Views.Desktop.Common" Version="4.151.1" />
     <None Include="OxyPlot.SkiaSharp.Wpf.snk" />
     <None Include="VisualStudioToolsManifest.xml" Pack="true" PackagePath="tools" />
   </ItemGroup>
